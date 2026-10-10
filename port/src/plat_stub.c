@@ -330,8 +330,29 @@ static int pad_read(int socket, unsigned char *data) {
     }
     return 18;
 }
-int sceVibGetProfile() { return 0; }
-int sceVibSetActParam() { return 0; }
+/* The game packs large-motor power in bits 1..7 and small-motor enable in bit 0. */
+extern int Port_PadRumble(int socket, unsigned short low, unsigned short high);
+int sceVibGetProfile(int socket, unsigned char *profile) {
+    if (socket < 0 || socket > 1 || profile == NULL) {
+        return -1;
+    }
+    profile[0] = 0;
+    profile[1] = 0;
+    return 1;
+}
+int sceVibSetActParam(int socket, int profileSize, unsigned char *profile, int dataSize, void *data) {
+    unsigned short packed;
+    unsigned low, high;
+    (void)profileSize;
+    (void)profile;
+    if (socket < 0 || socket > 1 || data == NULL || dataSize != 2) {
+        return -1;
+    }
+    memcpy(&packed, data, sizeof(packed));
+    low = ((packed >> 1) & 0x7F) * 65535u / 127u;
+    high = (packed & 1) ? 65535u : 0;
+    return Port_PadRumble(socket, (unsigned short)low, (unsigned short)high);
+}
 
 /* ---- MPEG movies: port/src/plat_movie.c ---- */
 
