@@ -172,6 +172,28 @@ static SDL_Gamepad *pad_of(int player) {
     return NULL;
 }
 
+/* Offline rumble only: rollback replays simulation frames, so online output must be
+   committed separately rather than sent from every simulated Pad_Update. */
+int Port_PadRumble(int socket, unsigned short low, unsigned short high) {
+    extern int Port_NetActive(void);
+    SDL_Gamepad *g;
+    if (!GsGpu_Enabled() || socket < 0 || socket > 1) {
+        return 0;
+    }
+    pthread_once(&sLoadOnce, load);
+    pads_refresh();
+    g = pad_of(socket);
+    if (g == NULL) {
+        return 0;
+    }
+    if (Port_NetActive() || gPortOverlayOpen || gPortInputCapture) {
+        low = high = 0;
+    }
+    /* Pad_Update refreshes this at 30 Hz. A short timeout prevents a stuck motor
+       if the game stops updating. Zero intensities stop it immediately. */
+    return SDL_RumbleGamepad(g, low, high, 100) ? 1 : -1;
+}
+
 /* BT3_PAD="frame:button,frame:button,...": scripted presses for player 1, each held for 4 frames from that frame
    (frame = the renderer's frame counter). Buttons: start select up down left right cross circle square triangle
    l1 r1 l2 r2. For tests without a person at the keyboard. */
