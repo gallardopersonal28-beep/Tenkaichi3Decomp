@@ -40,6 +40,8 @@ int *PortInput_PadButtons(int player); /* [PORT_PAD_BUTTONS] controller source, 
 int *PortInput_PadSlot(int player);    /* which connected controller: -1 none, 0 = first, ... */
 void PortInput_ResetDefaults(int player);
 void PortInput_Save(void);
+int PortInput_TestRumble(int player, int motor); /* 0 strong, 1 light; 500 ms */
+void PortInput_RumbleStatus(int player, char *text, int size);
 extern int gPortOverlayOpen;   /* the settings window is open: the keyboard does not reach the game */
 extern int gPortInputCapture;  /* it is waiting for a key or button to bind: nothing reaches the game */
 
@@ -70,3 +72,4 @@ extern volatile int gUiSongLit;   /* 1 while the music list is open: the disc's 
 }
 #endif
 #endif
+

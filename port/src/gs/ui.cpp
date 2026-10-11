@@ -755,6 +755,13 @@ static void controls_tab(void) {
         PortInput_ResetDefaults(player);
         PortInput_Save();
     }
+    if (ImGui::Button("Test strong motor")) { PortInput_TestRumble(player, 0); }
+    ImGui::SameLine();
+    if (ImGui::Button("Test light motor")) { PortInput_TestRumble(player, 1); }
+    char rumbleStatus[512];
+    PortInput_RumbleStatus(player, rumbleStatus, sizeof(rumbleStatus));
+    ImGui::TextWrapped("%s", rumbleStatus);
+    ImGui::TextDisabled("Local battles only. Test uses the Controller selected above.");
     ImGui::TextDisabled("Click a binding, then press the new key or button. Esc keeps it, Delete clears it.");
     if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV,
                           ImVec2(0.0f, ImGui::GetContentRegionAvail().y))) {
@@ -1150,3 +1157,4 @@ void Ui_DrawGL(void) {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 }
+

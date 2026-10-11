@@ -172,26 +172,69 @@ static SDL_Gamepad *pad_of(int player) {
     return NULL;
 }
 
-/* Offline rumble only: rollback replays simulation frames, so online output must be
-   committed separately rather than sent from every simulated Pad_Update. */
+/* Rumble diagnostics are host state: they must not be replayed by rollback. */
+static unsigned sRumbleCalls[2], sRumbleNonzero[2];
+static unsigned short sRumbleLow[2], sRumbleHigh[2];
+static char sRumbleError[2][160], sRumbleTest[2][192];
+static SDL_Gamepad *sRumbleTestPad;
+static Uint64 sRumbleTestUntil;
+
+int PortInput_TestRumble(int player, int motor) {
+    SDL_Gamepad *g;
+    bool ok;
+    if (player < 0 || player > 1 || !GsGpu_Enabled()) { return 0; }
+    pthread_once(&sLoadOnce, load);
+    pads_refresh();
+    g = pad_of(player);
+    if (g == NULL) {
+        snprintf(sRumbleTest[player], sizeof(sRumbleTest[player]), "No controller assigned or connected.");
+        return 0;
+    }
+    ok = SDL_RumbleGamepad(g, motor == 0 ? 40000 : 0, motor == 1 ? 40000 : 0, 500);
+    snprintf(sRumbleTest[player], sizeof(sRumbleTest[player]), "%s", ok
+        ? "SDL accepted the 0.5 second test. Did you feel it?"
+        : SDL_GetError());
+    if (ok) {
+        sRumbleTestPad = g;
+        sRumbleTestUntil = SDL_GetTicks() + 500;
+    }
+    return ok ? 1 : -1;
+}
+
+void PortInput_RumbleStatus(int player, char *text, int size) {
+    if (player < 0 || player > 1 || size <= 0) { return; }
+    snprintf(text, (size_t)size,
+        "Rumble diagnostic v2\nGame requests: %u; nonzero: %u; last motors: %u / %u\nLast SDL error: %s\nTest: %s",
+        sRumbleCalls[player], sRumbleNonzero[player], (unsigned)sRumbleLow[player],
+        (unsigned)sRumbleHigh[player], sRumbleError[player][0] ? sRumbleError[player] : "none recorded",
+        sRumbleTest[player][0] ? sRumbleTest[player] : "not run");
+}
+
+/* Offline only: rollback needs to commit effects separately. */
 int Port_PadRumble(int socket, unsigned short low, unsigned short high) {
     extern int Port_NetActive(void);
     SDL_Gamepad *g;
-    if (!GsGpu_Enabled() || socket < 0 || socket > 1) {
-        return 0;
-    }
+    if (!GsGpu_Enabled() || socket < 0 || socket > 1) { return 0; }
+    sRumbleCalls[socket]++;
+    if (low || high) { sRumbleNonzero[socket]++; }
+    sRumbleLow[socket] = low;
+    sRumbleHigh[socket] = high;
     pthread_once(&sLoadOnce, load);
     pads_refresh();
     g = pad_of(socket);
     if (g == NULL) {
+        snprintf(sRumbleError[socket], sizeof(sRumbleError[socket]), "No controller assigned or connected.");
         return 0;
     }
-    if (Port_NetActive() || gPortOverlayOpen || gPortInputCapture) {
-        low = high = 0;
+    /* The game's zero requests must not cancel an explicit test in F1.
+       Compare the device too: both players can be assigned the same controller. */
+    if (g == sRumbleTestPad && SDL_GetTicks() < sRumbleTestUntil) { return 1; }
+    if (Port_NetActive() || gPortOverlayOpen || gPortInputCapture) { low = high = 0; }
+    if (!SDL_RumbleGamepad(g, low, high, 100)) {
+        snprintf(sRumbleError[socket], sizeof(sRumbleError[socket]), "%s", SDL_GetError());
+        return -1;
     }
-    /* Pad_Update refreshes this at 30 Hz. A short timeout prevents a stuck motor
-       if the game stops updating. Zero intensities stop it immediately. */
-    return SDL_RumbleGamepad(g, low, high, 100) ? 1 : -1;
+    return 1;
 }
 
 /* BT3_PAD="frame:button,frame:button,...": scripted presses for player 1, each held for 4 frames from that frame
@@ -409,3 +452,4 @@ int Port_PadRead(int socket, unsigned char *data) {
     data[2] = rx; data[3] = ry; data[4] = lx; data[5] = ly;
     return 18;
 }
+
